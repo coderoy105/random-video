@@ -70,11 +70,15 @@ def gift_payload(event: GiftEvent) -> dict | None:
     gift_name = str(getattr(gift, "name", None) or "Gift")
     repeat_count = int(getattr(event, "repeat_count", 1) or 1)
     gift_type = int(getattr(gift, "type", 0) or 0)
+    diamond_count = int(getattr(gift, "diamond_count", 0) or 0)
+    gift_value = getattr(event, "value", None)
     return {
         "type": "gift",
         "giftName": gift_name,
         "giftType": gift_type,
         "repeatCount": repeat_count,
+        "diamondCount": diamond_count,
+        "giftValue": round(float(gift_value), 4) if gift_value is not None else None,
         "nickname": user_name(event),
         "timestamp": asyncio.get_running_loop().time(),
     }
