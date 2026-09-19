@@ -82,64 +82,80 @@ def gift_payload(event: GiftEvent) -> dict | None:
 
 async def run_tiktok(username: str) -> None:
     global active_username
-    client = TikTokLiveClient(unique_id=username)
+    first_attempt = True
+    while active_username == username:
+        client = TikTokLiveClient(unique_id=username)
 
-    @client.on(ConnectEvent)
-    async def on_connect(event: ConnectEvent):
-        logger.info("Connected to @%s", username)
-        await broadcast({"type": "server", "status": "connected", "tiktokId": username})
+        @client.on(ConnectEvent)
+        async def on_connect(event: ConnectEvent):
+            logger.info("Connected to @%s", username)
+            await broadcast({"type": "server", "status": "connected", "tiktokId": username})
 
-    @client.on(CommentEvent)
-    async def on_comment(event: CommentEvent):
-        await broadcast({
-            "type": "comment",
-            "comment": str(getattr(event, "comment", "")),
-            "nickname": user_name(event),
-        })
+        @client.on(CommentEvent)
+        async def on_comment(event: CommentEvent):
+            await broadcast({
+                "type": "comment",
+                "comment": str(getattr(event, "comment", "")),
+                "nickname": user_name(event),
+            })
 
-    @client.on(GiftEvent)
-    async def on_gift(event: GiftEvent):
-        payload = gift_payload(event)
-        if payload:
-            await broadcast(payload)
+        @client.on(GiftEvent)
+        async def on_gift(event: GiftEvent):
+            payload = gift_payload(event)
+            if payload:
+                await broadcast(payload)
 
-    @client.on(LikeEvent)
-    async def on_like(event: LikeEvent):
-        await broadcast({
-            "type": "like",
-            "likeCount": int(getattr(event, "like_count", 1) or 1),
-            "nickname": user_name(event),
-        })
+        @client.on(LikeEvent)
+        async def on_like(event: LikeEvent):
+            await broadcast({
+                "type": "like",
+                "likeCount": int(getattr(event, "like_count", 1) or 1),
+                "nickname": user_name(event),
+            })
 
-    @client.on(FollowEvent)
-    async def on_follow(event: FollowEvent):
-        await broadcast({"type": "follow", "nickname": user_name(event)})
+        @client.on(FollowEvent)
+        async def on_follow(event: FollowEvent):
+            await broadcast({"type": "follow", "nickname": user_name(event)})
 
-    @client.on(ShareEvent)
-    async def on_share(event: ShareEvent):
-        await broadcast({"type": "share", "nickname": user_name(event)})
+        @client.on(ShareEvent)
+        async def on_share(event: ShareEvent):
+            await broadcast({"type": "share", "nickname": user_name(event)})
 
-    @client.on(DisconnectEvent)
-    async def on_disconnect(event: DisconnectEvent):
-        await broadcast({"type": "server", "status": "disconnected", "tiktokId": username})
+        @client.on(DisconnectEvent)
+        async def on_disconnect(event: DisconnectEvent):
+            await broadcast({"type": "server", "status": "disconnected", "tiktokId": username})
 
-    try:
-        await client.connect(fetch_gift_info=True)
-    except asyncio.CancelledError:
-        with suppress(Exception):
-            await client.disconnect()
-        raise
-    except Exception as error:
-        logger.exception("TikTok connection failed for @%s: %s", username, error)
+        try:
+            await client.connect(fetch_gift_info=True)
+        except asyncio.CancelledError:
+            with suppress(Exception):
+                await client.disconnect()
+            raise
+        except Exception as error:
+            logger.warning("TikTok connection failed for @%s: %s", username, error)
+            await broadcast({
+                "type": "server",
+                "status": "error" if first_attempt else "waiting",
+                "tiktokId": username,
+                "message": str(error)[:240],
+            })
+        finally:
+            with suppress(Exception):
+                await client.disconnect()
+
+        first_attempt = False
+        if active_username != username:
+            break
         await broadcast({
             "type": "server",
-            "status": "error",
+            "status": "waiting",
             "tiktokId": username,
-            "message": str(error)[:240],
+            "message": "LIVE 연결을 다시 시도하는 중입니다.",
         })
-    finally:
-        if active_username == username:
-            active_username = None
+        await asyncio.sleep(15)
+
+    if active_username == username:
+        active_username = None
 
 
 async def switch_stream(username: str) -> None:
