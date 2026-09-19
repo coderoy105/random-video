@@ -175,6 +175,17 @@ async def switch_stream(username: str) -> None:
         stream_task = asyncio.create_task(run_tiktok(username))
 
 
+async def stop_stream() -> None:
+    global stream_task, active_username
+    async with state_lock:
+        if stream_task and not stream_task.done():
+            stream_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await stream_task
+        stream_task = None
+        active_username = None
+
+
 async def health(request: web.Request) -> web.Response:
     return web.json_response({
         "ok": True,
@@ -214,6 +225,8 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
             await switch_stream(username)
     finally:
         clients.discard(socket)
+        if not clients:
+            await stop_stream()
     return socket
 
 
